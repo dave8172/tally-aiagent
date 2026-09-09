@@ -248,7 +248,13 @@ class Voucher:
 
     def body(self) -> str:
         """The <TALLYMESSAGE> for this voucher. Contains no credentials, so it
-        is safe to print, log, diff or hand to an agent for review."""
+        is safe to print, log, diff or hand to an agent for review.
+
+        Element order follows a voucher shape verified in production against a
+        real Tally. Tally appears to parse these header fields by name rather
+        than by position, but "appears to" is not a reason to reorder working
+        XML, so the proven sequence is kept deliberately.
+        """
         if not self.prepared:
             from .errors import NotPrepared
 
@@ -257,28 +263,42 @@ class Voucher:
                 "first — it resolves every name against Tally and computes the "
                 "money. Nothing should ever be built from unresolved names."
             )
+        invoice = self.kind != "journal"
         parts = [
             f'<VOUCHER VCHTYPE="{esc(self.voucher_type)}" ACTION="Create"'
-            f'{" OBJVIEW=\"Invoice Voucher View\"" if self.lines else ""}>',
+            + (' OBJVIEW="Invoice Voucher View">' if invoice else ">"),
             f"<DATE>{self.date}</DATE>",
             f"<EFFECTIVEDATE>{self.date}</EFFECTIVEDATE>",
-            f"<VOUCHERTYPENAME>{esc(self.voucher_type)}</VOUCHERTYPENAME>",
-            f"<VOUCHERNUMBER>{esc(self.voucher_number)}</VOUCHERNUMBER>",
-            f"<NARRATION>{esc(self.narration)}</NARRATION>",
-            "<ISDELETED>No</ISDELETED><ISCANCELLED>No</ISCANCELLED>",
         ]
-        if self.reference:
-            parts.append(f"<REFERENCE>{esc(self.reference)}</REFERENCE>")
         if self.reference_date:
             parts.append(f"<REFERENCEDATE>{self.reference_date}</REFERENCEDATE>")
-        if self.country:
-            parts.append(f"<COUNTRYOFRESIDENCE>{esc(self.country)}</COUNTRYOFRESIDENCE>")
+        if self.reference:
+            parts.append(f"<REFERENCE>{esc(self.reference)}</REFERENCE>")
+        parts.append(f"<NARRATION>{esc(self.narration)}</NARRATION>")
+        parts.append(f"<VOUCHERTYPENAME>{esc(self.voucher_type)}</VOUCHERTYPENAME>")
+        parts.append(f"<VOUCHERNUMBER>{esc(self.voucher_number)}</VOUCHERNUMBER>")
 
-        if self.kind == "journal":
-            parts.extend(self._journal_entries())
-        else:
-            parts.extend(self._invoice_body())
+        if invoice:
+            parts.extend(
+                [
+                    f"<PARTYNAME>{esc(self.tally_party)}</PARTYNAME>",
+                    f"<PARTYLEDGERNAME>{esc(self.tally_party)}</PARTYLEDGERNAME>",
+                    f"<BASICBASEPARTYNAME>{esc(self.tally_party)}</BASICBASEPARTYNAME>",
+                ]
+            )
+            if self.country:
+                parts.append(f"<COUNTRYOFRESIDENCE>{esc(self.country)}</COUNTRYOFRESIDENCE>")
+            parts.extend(
+                [
+                    "<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>",
+                    "<VCHENTRYMODE>Item Invoice</VCHENTRYMODE>",
+                    "<ISINVOICE>Yes</ISINVOICE>",
+                ]
+            )
+        parts.append("<ISDELETED>No</ISDELETED>")
+        parts.append("<ISCANCELLED>No</ISCANCELLED>")
 
+        parts.extend(self._journal_entries() if not invoice else self._invoice_body())
         parts.append("</VOUCHER>")
         return '<TALLYMESSAGE xmlns:UDF="TallyUDF">' + "".join(parts) + "</TALLYMESSAGE>"
 
@@ -287,14 +307,7 @@ class Voucher:
         # Goods: debit on a purchase (negative), credit on a sale (positive).
         goods_sign = "-" if buying else ""
         deemed_positive = "Yes" if buying else "No"
-        parts = [
-            f"<PARTYNAME>{esc(self.tally_party)}</PARTYNAME>",
-            f"<PARTYLEDGERNAME>{esc(self.tally_party)}</PARTYLEDGERNAME>",
-            f"<BASICBASEPARTYNAME>{esc(self.tally_party)}</BASICBASEPARTYNAME>",
-            "<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>",
-            "<VCHENTRYMODE>Item Invoice</VCHENTRYMODE>",
-            "<ISINVOICE>Yes</ISINVOICE>",
-        ]
+        parts = []
         for line in self.lines:
             unit = line.resolved_unit or "Nos"
             parts.append(

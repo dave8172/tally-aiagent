@@ -258,12 +258,34 @@ mode is silent and lands in someone's books.
 
 | | Status |
 |---|---|
-| The gate, name resolution, ambiguity refusal | Verified — in daily production use |
-| Read-back verification | Verified — in daily production use |
-| Money and rounding | Verified against real vouchers, to the paisa |
-| **Purchase vouchers** | **Verified** against real Tally purchase vouchers |
+| The gate, name resolution, ambiguity refusal | **Verified against a live company** |
+| Read-back verification | **Verified against a real posted voucher** |
+| Money and rounding | **Verified — reproduces a real voucher to the paisa** |
+| **Purchase vouchers** | **Verified — generated XML is byte-identical to production** |
 | **Sales vouchers** | **Not yet verified** against a real Tally sales voucher |
 | **Journal vouchers** | **Not yet verified** against a real Tally journal voucher |
+
+### How the purchase path was verified
+
+Against a live company with 240 stock items and 519 ledgers, without writing anything
+to it:
+
+- **Name resolution** was run over six real supplier names, four of which differed from
+  Tally's own spelling by punctuation or case (`WILSONIC DEVELOPMENT CO. LTD` against
+  Tally's `WILSONIC DEVELOPMENT CO LTD`, and similar). All six resolved to Tally's
+  spelling. A near-miss that Tally does *not* hold — `Technologies` where the master
+  says `Technology` — was refused, with the correct name offered as a suggestion.
+- **Read-back** was run against a real posted 75-line purchase voucher. The parsed
+  totals matched an independent production implementation exactly.
+- **The write path** was checked by generating the envelope for that same voucher and
+  diffing it against the bytes a production system actually posts. **37,467 bytes,
+  byte-for-byte identical** — so the bytes this library would send are the bytes that
+  system already posts successfully.
+
+That last check is why no test voucher had to be created in a live company to trust the
+purchase path. It is also why voucher element order here follows a proven sequence
+rather than a tidier one: Tally appears to parse these header fields by name rather than
+position, but "appears to" is not a reason to reorder working XML.
 
 Sales and journal follow Tally's documented voucher shape and are covered by tests, but
 "passes its tests" is not "matches what Tally stores". Both emit a warning when used.
