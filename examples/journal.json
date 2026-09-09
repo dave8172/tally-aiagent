@@ -1,0 +1,10 @@
+{
+  "kind": "journal",
+  "voucher_number": "JV-007/2627",
+  "date": "20260909",
+  "narration": "Freight paid by bank transfer",
+  "entries": [
+    { "ledger": "Freight Inward", "amount": "450.00", "side": "debit"  },
+    { "ledger": "Bank Account",   "amount": "450.00", "side": "credit" }
+  ]
+}

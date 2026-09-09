@@ -1,0 +1,16 @@
+{
+  "kind": "purchase",
+  "voucher_number": "IMP-014/2627",
+  "date": "20260909",
+  "party": "Acme Supplies Pvt Ltd",
+  "item_ledger": "Purchase Accounts",
+  "reference": "CI-2026-0088",
+  "narration": "Import, rate as per bill of entry",
+  "lines": [
+    { "item": "Widget A", "qty": 50, "unit_cost": "10.25", "currency_rate": "88.40" },
+    { "item": "Widget B", "qty": 20, "unit_cost": "31.00", "currency_rate": "88.40" }
+  ],
+  "charges": [
+    { "ledger": "Freight Inward", "amount": "18420.00" }
+  ]
+}

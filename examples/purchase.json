@@ -1,0 +1,19 @@
+{
+  "kind": "purchase",
+  "voucher_number": "PUR-001/2627",
+  "date": "20260909",
+  "party": "Acme Supplies Pvt Ltd",
+  "item_ledger": "Purchase Accounts",
+  "reference": "INV-4471",
+  "reference_date": "20260901",
+  "narration": "September stock intake",
+  "lines": [
+    { "item": "Widget A", "qty": 10, "rate": "125.50" },
+    { "item": "Widget B", "qty": 4,  "rate": "899.00" }
+  ],
+  "charges": [
+    { "ledger": "Freight Inward", "amount": "450.00" }
+  ],
+  "round_off_ledger": "Round Off",
+  "invoice_total": "5306.00"
+}

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tally-aiagent"
+version = "0.1.0"
+description = "Safe writes to Tally Prime for AI agents — refuses any name Tally does not already hold, and reads every voucher back to prove what was stored."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "dave8172", email = "mdhawal94@gmail.com" }]
+requires-python = ">=3.10"
+keywords = ["tally", "tallyprime", "accounting", "erp", "mcp", "agent-tools", "india", "gst"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Accounting",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+mcp = [
+    # MCP 2.x. mcp_server.py uses `from mcp.server import MCPServer`, which is
+    # the 2.x name — 1.x called it FastMCP and lives at a different path, so an
+    # unpinned floor would break the extra on an old resolve.
+    "mcp>=2.0",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+tally-aiagent = "tally_aiagent.cli:main"
+tally-aiagent-mcp = "tally_aiagent.mcp_server:main"
+
+[project.urls]
+Homepage = "https://github.com/dave8172/tally-aiagent"
+Repository = "https://github.com/dave8172/tally-aiagent"
+Issues = "https://github.com/dave8172/tally-aiagent/issues"
+Changelog = "https://github.com/dave8172/tally-aiagent/releases"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tally_aiagent"]

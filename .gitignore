@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.env
+*.log
+
+# Working context for Claude sessions — this repo is PUBLIC, keep it local
+CLAUDE.md
