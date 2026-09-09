@@ -42,16 +42,41 @@ class Masters:
     ledgers: dict[str, dict] = field(default_factory=dict)
 
     def __post_init__(self):
-        self._item_index = _build_index(self.items)
-        self._ledger_index = _build_index(self.ledgers)
+        self._item_index: dict[str, list[str]] = {}
+        self._ledger_index: dict[str, list[str]] = {}
+        self._item_count = -1
+        self._ledger_count = -1
+
+    def _items_index(self) -> dict[str, list[str]]:
+        """Rebuilt whenever the table changes size.
+
+        Callers legitimately populate `items` and `ledgers` directly — a test
+        fixture, a cached master list loaded from elsewhere — and an index built
+        once at construction would silently match nothing for them. Failing to
+        resolve is the one failure mode this class must never have.
+        """
+        if self._item_count != len(self.items):
+            self._item_index = _build_index(self.items)
+            self._item_count = len(self.items)
+        return self._item_index
+
+    def _ledgers_index(self) -> dict[str, list[str]]:
+        if self._ledger_count != len(self.ledgers):
+            self._ledger_index = _build_index(self.ledgers)
+            self._ledger_count = len(self.ledgers)
+        return self._ledger_index
+
+    def reindex(self) -> None:
+        """Force an index rebuild after renaming a master in place."""
+        self._item_count = self._ledger_count = -1
 
     def resolve_item(self, name: str) -> tuple[str | None, str]:
         """Resolve a stock item name. Returns (tally_name_or_None, explanation)."""
-        return _resolve(name, self.items, self._item_index, "stock item")
+        return _resolve(name, self.items, self._items_index(), "stock item")
 
     def resolve_ledger(self, name: str) -> tuple[str | None, str]:
         """Resolve a ledger name. Returns (tally_name_or_None, explanation)."""
-        return _resolve(name, self.ledgers, self._ledger_index, "ledger")
+        return _resolve(name, self.ledgers, self._ledgers_index(), "ledger")
 
     def units_for(self, item_name: str, default: str = "Nos") -> str:
         """Base unit Tally holds for an item, so quantities are not guessed."""
@@ -163,5 +188,4 @@ def fetch_masters(tally) -> Masters:
             "parent": tag(block, "PARENT") or "",
         }
 
-    masters.__post_init__()
     return masters

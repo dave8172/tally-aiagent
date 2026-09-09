@@ -146,3 +146,20 @@ def test_did_you_mean_still_catches_a_partial(tally):
 
 def test_did_you_mean_does_not_return_everything(tally):
     assert tally.masters().candidates("zzzzzzzz", kind="ledger") == []
+
+
+def test_masters_populated_after_construction_still_resolve():
+    """A caller may build Masters and fill it in afterwards — a test fixture, or
+    a master list cached elsewhere. An index built once at construction would
+    match nothing, which is the one failure this class must never have."""
+    from tally_aiagent import Masters
+
+    masters = Masters()
+    masters.ledgers["Acme Supplies Pvt Ltd"] = {"guid": "l-1", "parent": "Sundry Creditors"}
+    masters.items["Widget A"] = {"guid": "g-1", "parent": "Grp", "hsn": None, "units": "Nos"}
+
+    assert masters.resolve_ledger("ACME SUPPLIES PVT. LTD.")[0] == "Acme Supplies Pvt Ltd"
+    assert masters.resolve_item("widget a")[0] == "Widget A"
+
+    masters.ledgers["Beta Traders"] = {"guid": "l-2", "parent": "Sundry Debtors"}
+    assert masters.resolve_ledger("beta traders")[0] == "Beta Traders"
