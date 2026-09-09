@@ -33,7 +33,7 @@ from .masters import Masters, normalize
 from .posting import Preparation
 from .vouchers import Charge, Entry, Line, Voucher
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "Tally",

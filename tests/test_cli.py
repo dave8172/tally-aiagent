@@ -95,3 +95,33 @@ def test_examples_in_the_repo_are_loadable(run):
     for path in sorted(glob.glob("examples/*.json")):
         data = json.load(open(path))
         assert "kind" in data and "voucher_number" in data
+
+
+def test_env_values_are_shell_quoted():
+    """A company name with spaces and brackets — 'Acme Traders (Pune)' — is normal,
+    and an unquoted line for it makes the file a syntax error the moment anyone
+    runs `. .env`. Which is exactly what the wizard tells them to do."""
+    from tally_aiagent.cli import _shell_quote
+
+    assert _shell_quote("Acme Traders (Pune)") == "'Acme Traders (Pune)'"
+    assert _shell_quote("O'Brien & Sons") == "'O'\\''Brien & Sons'"
+    assert _shell_quote("plain") == "'plain'"
+
+
+def test_setup_writes_a_sourceable_env_file(tmp_path):
+    """Round-trip it through a real shell, because 'looks quoted' is not the test."""
+    import subprocess
+
+    from tally_aiagent.cli import _shell_quote
+
+    env = tmp_path / ".env"
+    env.write_text(
+        "TALLY_HOST=" + _shell_quote("localhost") + "\n"
+        "TALLY_COMPANY=" + _shell_quote("Acme Traders (Pune) & Co") + "\n"
+    )
+    out = subprocess.run(
+        ["bash", "-c", f'set -a && . "{env}" && set +a && printf %s "$TALLY_COMPANY"'],
+        capture_output=True, text=True,
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout == "Acme Traders (Pune) & Co"

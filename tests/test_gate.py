@@ -163,3 +163,33 @@ def test_masters_populated_after_construction_still_resolve():
 
     masters.ledgers["Beta Traders"] = {"guid": "l-2", "parent": "Sundry Debtors"}
     assert masters.resolve_ledger("beta traders")[0] == "Beta Traders"
+
+
+def test_company_discovery_reads_the_right_tag():
+    """<NAME> in the companies response is a GUID; <REMOTECMPNAME> is the name.
+    Matching the wrong one hands the user an identifier Tally will not accept."""
+    import re
+    from html import unescape
+
+    response = (
+        "<ENVELOPE><BODY><DESC><STATICVARIABLES>"
+        "<SVCURRENTCOMPANY>Acme Traders (Pune)</SVCURRENTCOMPANY>"
+        "</STATICVARIABLES></DESC><DATA><TALLYMESSAGE><COMPANY>"
+        '<REMOTECMPINFO.LIST MERGE="Yes">'
+        "<NAME>c1fb4861-5f5a-4cc9-9cae-d338b78c8dcf</NAME>"
+        "<REMOTECMPNAME>Acme Traders (Pune)</REMOTECMPNAME>"
+        "</REMOTECMPINFO.LIST></COMPANY></TALLYMESSAGE></DATA></BODY></ENVELOPE>"
+    )
+    names = [unescape(n).strip()
+             for n in re.findall(r"<REMOTECMPNAME>([^<]*)</REMOTECMPNAME>", response)]
+    assert names == ["Acme Traders (Pune)"]
+    assert "c1fb4861" not in "".join(names)
+
+
+def test_discovery_omits_empty_credential_tags():
+    """Empty <USERID></USERID> is not the same as no tag — a company without
+    security answers the first form with nothing at all."""
+    from tally_aiagent.discovery import _auth
+
+    assert _auth("", "") == ""
+    assert "<USERID>admin</USERID>" in _auth("admin", "x")

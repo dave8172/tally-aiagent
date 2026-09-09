@@ -100,41 +100,102 @@ Tally would NOT reject this name — it would create a new account and report su
 
 ---
 
-## Get started
+## Before you start
 
-**1. Install it**
+You need three things, all in Tally. This tool never creates any of them — it reads
+what you already have.
+
+**1. Tally Prime, installed and running.** With your company **open**. If Tally is
+closed, or sitting on the company-select screen, nothing here can reach it.
+
+**2. A company created in Tally.** With your suppliers, customers and stock items in
+it. An empty company will connect fine and then be useless, because every name this
+tool writes has to already exist.
+
+**3. Tally set to answer requests.** This is the step people miss:
+
+> **F1 → Settings → Connectivity → Client/Server configuration**
+> Set **"TallyPrime acts as"** to **"Both"**, and note the **port** it shows.
+
+### Where does your Tally run?
+
+There are two setups, and they need different addresses.
+
+|  | **Tally on your own computer or office network** | **Tally on Cloud** (a provider hosts it) |
+|---|---|---|
+| Address | `localhost` if it's this machine; otherwise that computer's IP, e.g. `192.168.1.5` | The address your provider gave you, e.g. `yourcompany.tallycloud.in` |
+| Port | usually **9000** | usually **9008** |
+| Watch out for | the machine sleeping, and firewalls between computers | the provider has to **open the port for you** — many don't by default. Ask them for "ODBC / XML port access" |
+
+Either way, **the connection has no encryption** — Tally doesn't support HTTPS on that
+port. Keep it on your own network or a VPN, and never open it to the internet. More in
+[Security](#security) below.
+
+---
+
+## Get started
 
 ```bash
 pip install tally-aiagent
+tally-aiagent setup
 ```
 
-**2. Let Tally answer requests.** In Tally: **F1 → Settings → Connectivity →
-Client/Server configuration**, and set *TallyPrime acts as* to **Both**. Note the port
-(9000 by default). Tally must be running with your company open.
+`setup` walks you through it one question at a time, tells you where to find each
+answer, and tests as it goes — so you find out immediately if something's wrong,
+rather than after you've configured everything.
 
-**3. Tell it where Tally is**
+It also **finds your company name for you**. That matters more than it sounds: Tally
+is unforgiving about a stray comma or a trailing space in a company name, and tells you
+nothing useful when it doesn't match. So the wizard reads the list out of Tally and you
+pick from it.
 
-```bash
-export TALLY_HOST=localhost            # the machine Tally runs on
-export TALLY_PORT=9000                 # often 9008 on hosted Tally
-export TALLY_COMPANY="Your Company"    # exactly as spelled in Tally
+```
+  Step 3 of 4 — which company?
+
+  Found one company open:  Acme Traders (Pune)
+  Use this one? [Y/n]:
+
+  Step 4 of 4 — checking it really works
+
+  Read from Tally successfully:
+    519 ledgers (suppliers, customers, accounts)
+    240 stock items
 ```
 
-**4. Check it works**
+At the end it saves your settings to a `.env` file that only you can read, and prints
+a ready-to-paste config block for your AI assistant.
+
+If something can't be reached, it says what to check rather than just failing:
+
+```
+  Could not reach it — [Errno 111] Connection refused
+
+  The usual reasons, most common first:
+
+    1. Tally isn't running, or no company is open.
+    2. Tally isn't set to answer requests. In Tally:
+         F1 -> Settings -> Connectivity -> Client/Server configuration
+         set "TallyPrime acts as" to "Both"
+       Note the port shown there — it may not be 9000.
+    3. Wrong address. If Tally runs on another computer, use that computer's IP.
+    4. A firewall, or your cloud provider hasn't opened the port.
+```
+
+### Check it's working
 
 ```bash
 tally-aiagent check
 ```
 
 ```
-connecting to http://localhost:9000  company='Your Company'
+connecting to http://localhost:9000  company='Acme Traders (Pune)'
   240 stock items
   519 ledgers
   170 items with stock on hand
 connection ok
 ```
 
-**5. Try the bit that matters** — ask whether a name is safe to write:
+Then try the bit that matters — ask whether a name is safe to write:
 
 ```bash
 tally-aiagent resolve "acme supplies pvt. ltd."
@@ -145,6 +206,25 @@ OK  'acme supplies pvt. ltd.' -> 'Acme Supplies Pvt Ltd'  [matched]
 this is the spelling that would be written
 ```
 
+<details>
+<summary><b>Prefer to set it up by hand?</b></summary>
+
+The wizard just writes environment variables. You can set them yourself:
+
+```bash
+export TALLY_HOST=localhost            # or the IP / cloud address
+export TALLY_PORT=9000                 # 9008 on most cloud Tally
+export TALLY_COMPANY="Acme Traders (Pune)"   # exactly as Tally spells it
+export TALLY_USER=""                   # only if your company asks for a sign-in
+export TALLY_PASSWORD=""
+```
+
+`TALLY_COMPANY` has to match Tally's spelling character for character. To see the exact
+names Tally holds, run `tally-aiagent setup` and read the list, or check Tally's own
+company screen. Quote the value — company names routinely contain spaces and brackets.
+
+</details>
+
 ---
 
 ## Connect it to an AI agent
@@ -154,8 +234,11 @@ pip install "tally-aiagent[mcp]"
 ```
 
 It speaks [MCP](https://modelcontextprotocol.io), so it works with Claude Code, Claude
-Desktop, Cursor, or anything else that speaks MCP. Add this to your MCP config
-(`.mcp.json`, or your client's settings):
+Desktop, Cursor, or anything else that speaks MCP.
+
+**`tally-aiagent setup` prints this block filled in with your own settings** — copy it
+from there rather than editing the example. Add it to your MCP config (`.mcp.json`, or
+your client's settings):
 
 ```json
 {
@@ -198,6 +281,7 @@ What the agent can do:
 ## From the command line
 
 ```bash
+tally-aiagent setup                          # guided setup — start here
 tally-aiagent check                          # connection and what Tally holds
 tally-aiagent masters --kind ledgers         # every ledger name
 tally-aiagent masters --kind items --search widget
@@ -368,6 +452,8 @@ clicking through fifty of them an hour. Keep the volume low enough that the repo
 read, and treat the read-back result as the real safety net.
 
 ### Settings reference
+
+`tally-aiagent setup` writes these for you. Set them by hand only if you'd rather.
 
 | Variable | Needed | Notes |
 |---|---|---|

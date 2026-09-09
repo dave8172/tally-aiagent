@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tally-aiagent"
-version = "0.1.1"
+version = "0.2.0"
 description = "Safe writes to Tally Prime for AI agents — refuses any name Tally does not already hold, and reads every voucher back to prove what was stored."
 readme = "README.md"
 license = "MIT"
