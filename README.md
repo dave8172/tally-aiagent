@@ -1,11 +1,14 @@
 # tally-aiagent
 
-**Safe writes to Tally Prime, for AI agents and the people who have to trust them.**
+**Let an AI agent write to Tally without quietly wrecking your books.**
 
-Tally does not reject a supplier or product name it has never seen. It *creates* one,
-posts your entry against it, and reports success. This library refuses to write any
-name that is not already in Tally's own master list — and after every write, it reads
-the voucher back out of Tally to check that what got stored is what you sent.
+Tally has a habit that is fine when a person is typing and dangerous when software
+isn't: if you send it a supplier or product name it doesn't recognise, it doesn't
+complain — it creates a new one and reports success.
+
+This library refuses to write any name that isn't already in Tally. And after every
+entry it makes, it reads the entry back out of Tally to check that what got saved is
+what you meant.
 
 ---
 
@@ -15,83 +18,76 @@ Your system knows a supplier as **`ACME SUPPLIES CO. LTD`**.
 
 Tally knows the same supplier as **`ACME SUPPLIES CO LTD`** — no full stop after `CO`.
 
-You post a purchase bill. Tally does not complain. It quietly opens a *second* supplier
-ledger with the slightly different name, books the bill against it, and returns success.
+You post a purchase bill. Tally doesn't complain. It quietly opens a *second* supplier
+account with the slightly different name, books the bill against it, and reports
+success.
 
 Nothing failed. No error appeared. But from that moment:
 
-- the supplier's outstanding balance is split across two ledgers, so neither is right
-- the payables report understates what you owe
-- statements sent to that supplier don't reconcile
+- the supplier's balance is split across two accounts, so neither is right
+- your payables report understates what you owe
+- statements you send that supplier don't reconcile
 - and nobody finds out until someone chases a payment, weeks later
 
-A trailing space does this. A comma does this. So does an invisible character pasted out
-of Excel. The same thing happens to product names, and there it silently changes your
-stock valuation too.
+A trailing space does this. A comma does this. So does an invisible character pasted
+out of Excel. The same thing happens to product names, and there it quietly changes
+your stock valuation too.
 
-**This is not a rare edge case — it is Tally's normal, documented behaviour on import.**
-It is survivable when a human is typing, because a human notices the new name appear in
-the dropdown. It is *not* survivable when software writes the entry, and it is much worse
-when an AI agent does, because an agent will confidently produce a plausible-looking name
-it has never verified.
+This is normal Tally behaviour, not a rare bug. It's survivable when a person is
+typing, because they notice the new name appear in the dropdown. It is **not**
+survivable when software writes the entry — and it's worse with an AI agent, which
+will confidently produce a plausible-looking name it never checked.
 
 ## What this does about it
 
-```
-Your system  ─────►  the gate  ─────►  Tally
-              names         only names Tally
-              you have      already holds
-```
+Three rules, built into the code rather than written in a manual:
 
-Three rules, enforced in code rather than in documentation:
+1. **Names come from Tally, not from you.** Your system supplies quantities, rates,
+   dates and invoice numbers. Tally supplies names. If a name can't be found in Tally,
+   the whole entry is refused and nothing is sent.
+2. **When in doubt, it stops.** If your `PSU-500` could mean either `PSU 500H` or
+   `PSU 500S`, there's no safe answer. It shows you both and refuses to guess.
+3. **"Success" isn't proof.** After writing, it reads the entry back out of Tally and
+   compares. A mismatch is reported loudly instead of being swallowed.
 
-1. **Every name written into a voucher comes out of Tally's own master export.** Your
-   system supplies quantities, rates, dates and references. Tally supplies names. If a
-   name cannot be found, the whole voucher is refused and nothing is sent.
-2. **Ambiguity is a refusal, not a guess.** If your `PSU-500` matches both `PSU 500H`
-   and `PSU 500S`, there is no safe answer. It shows you both and stops.
-3. **`CREATED=1` is not proof.** After every write, the voucher is read back out of
-   Tally and compared against what was intended. A mismatch is reported loudly, not
-   swallowed.
+## Who it's for
+
+- You're connecting Tally to an AI assistant and want a seatbelt on it.
+- You're writing software that posts into Tally and don't want to discover this
+  problem the way everyone else does.
+- You're an accountant or business owner being asked to allow either of the above,
+  and you want to know what stops it going wrong.
 
 ---
 
-## Try it in 60 seconds
+## How an agent actually uses it
 
-```bash
-pip install tally-aiagent
+Writing is deliberately **two steps, not one**. An agent can't skip the first.
 
-export TALLY_HOST=localhost          # the machine Tally runs on
-export TALLY_PORT=9000               # 9000 by default; often 9008 on hosted Tally
-export TALLY_COMPANY="Your Company"  # exactly as spelled in Tally
-
-tally-aiagent check
-```
+**Step 1 — it prepares.** The agent describes the entry it wants to make. The library
+checks every name against Tally, works out the money, and hands back a plain report.
+**Nothing has been written at this point.**
 
 ```
-connecting to http://localhost:9000  company='Your Company'
-  240 stock items
-  1,118 ledgers
-  186 items with stock on hand
-connection ok
+party    'acme supplies pvt ltd' -> 'Acme Supplies Pvt Ltd'  [matched]
+ledger   'Purchase Accounts' -> 'Purchase Accounts'  [exact]
+item     'Widget A' -> 'Widget A'  [exact]  10 x 125.50 = 1255.00
+charge   'Freight Inward' -> 'Freight Inward'  [exact]  450.00
+totals   goods=1255.00  charges=450.00  party=1705.00
 ```
 
-Now ask it about a name before anything depends on it:
+That report is the thing a human reads. Left column: what the agent asked for. Right
+column: what Tally actually holds. Bottom: the money.
 
-```bash
-tally-aiagent resolve "acme supplies pvt. ltd."
-```
+**Step 2 — you approve, it posts.** Only then does anything reach Tally, and
+immediately afterwards the entry is read back and compared.
 
-```
-OK  'acme supplies pvt. ltd.' -> 'Acme Supplies Pvt Ltd'  [normalized ('acme supplies pvt. ltd.' -> 'Acme Supplies Pvt Ltd')]
-this is the spelling that would be written
-```
+The reason an agent can't skip step 1 is structural, not a rule it's asked to follow:
+the "post" tool takes only a reference to something that already passed step 1. It has
+no way to describe a voucher at all. So there is always a report, and it is always
+readable.
 
-And a name Tally does not have:
-
-```bash
-tally-aiagent resolve "Acme Supplies Co. Ltd"
-```
+If a name doesn't check out, the agent gets this instead — and no entry is created:
 
 ```
 REFUSED  no ledger in Tally matches 'Acme Supplies Co. Ltd'
@@ -99,17 +95,125 @@ REFUSED  no ledger in Tally matches 'Acme Supplies Co. Ltd'
 did you mean:
   Acme Supplies Pvt Ltd
 
-Tally would NOT reject this name — it would create a new master and report success.
-Fix the spelling, or create the master in Tally first.
+Tally would NOT reject this name — it would create a new account and report success.
 ```
-
-That second output is the entire product. Everything else is plumbing around it.
 
 ---
 
-## Post a voucher
+## Get started
 
-Describe it in a JSON file — see [`examples/`](examples/) for more:
+**1. Install it**
+
+```bash
+pip install tally-aiagent
+```
+
+**2. Let Tally answer requests.** In Tally: **F1 → Settings → Connectivity →
+Client/Server configuration**, and set *TallyPrime acts as* to **Both**. Note the port
+(9000 by default). Tally must be running with your company open.
+
+**3. Tell it where Tally is**
+
+```bash
+export TALLY_HOST=localhost            # the machine Tally runs on
+export TALLY_PORT=9000                 # often 9008 on hosted Tally
+export TALLY_COMPANY="Your Company"    # exactly as spelled in Tally
+```
+
+**4. Check it works**
+
+```bash
+tally-aiagent check
+```
+
+```
+connecting to http://localhost:9000  company='Your Company'
+  240 stock items
+  519 ledgers
+  170 items with stock on hand
+connection ok
+```
+
+**5. Try the bit that matters** — ask whether a name is safe to write:
+
+```bash
+tally-aiagent resolve "acme supplies pvt. ltd."
+```
+
+```
+OK  'acme supplies pvt. ltd.' -> 'Acme Supplies Pvt Ltd'  [matched]
+this is the spelling that would be written
+```
+
+---
+
+## Connect it to an AI agent
+
+```bash
+pip install "tally-aiagent[mcp]"
+```
+
+It speaks [MCP](https://modelcontextprotocol.io), so it works with Claude Code, Claude
+Desktop, Cursor, or anything else that speaks MCP. Add this to your MCP config
+(`.mcp.json`, or your client's settings):
+
+```json
+{
+  "mcpServers": {
+    "tally": {
+      "command": "tally-aiagent-mcp",
+      "env": {
+        "TALLY_HOST": "localhost",
+        "TALLY_COMPANY": "Your Company",
+        "TALLY_AIAGENT_ALLOW_WRITES": "1"
+      }
+    }
+  }
+}
+```
+
+**Writes are off until you turn them on.** Leave `TALLY_AIAGENT_ALLOW_WRITES` out
+entirely and the agent can look but not touch. Start there, watch it prepare a few
+entries, and turn writing on when you're comfortable.
+
+Then you can just talk to it: *"What's our stock of Widget A?"*, *"Is 'Acme Supplies
+Co Ltd' a real supplier in Tally?"*, *"Book a purchase from Acme — 10 Widget A at
+125.50, invoice INV-4471."* The last one comes back as a report to approve, not as a
+finished entry.
+
+What the agent can do:
+
+| Tool | What it does |
+|---|---|
+| `list_masters` | The exact supplier, customer, ledger and product names Tally holds |
+| `resolve_name` | Is this name safe to write? Returns Tally's spelling, or why not |
+| `stock` | Closing stock quantities |
+| `read_voucher` | Read an entry back out of the books |
+| `suggest_voucher_number` | The next free number for a manually numbered voucher type |
+| `prepare_voucher` | **Step 1** — check and price it. Writes nothing |
+| `post_voucher` | **Step 2** — write something that already passed step 1, then verify it |
+
+---
+
+## From the command line
+
+```bash
+tally-aiagent check                          # connection and what Tally holds
+tally-aiagent masters --kind ledgers         # every ledger name
+tally-aiagent masters --kind items --search widget
+tally-aiagent resolve "some supplier name"   # is this safe to write?
+tally-aiagent stock                          # closing stock
+tally-aiagent stock "Widget A"
+tally-aiagent voucher PUR-001/2627           # read an entry back
+tally-aiagent prepare entry.json             # dry run — writes nothing
+tally-aiagent prepare entry.json --post      # write it, then verify
+```
+
+## Examples
+
+An entry is a small JSON file. More in [`examples/`](examples/).
+
+**A purchase bill:**
 
 ```json
 {
@@ -128,38 +232,40 @@ Describe it in a JSON file — see [`examples/`](examples/) for more:
 }
 ```
 
-Dry run first — this reads from Tally and writes nothing:
+**Buying in another currency** — give the foreign price and the rate:
+
+```json
+{ "item": "Widget A", "qty": 50, "unit_cost": "10.25", "currency_rate": "88.40" }
+```
+
+**A journal entry:**
+
+```json
+{
+  "kind": "journal",
+  "voucher_number": "JV-007/2627",
+  "date": "20260909",
+  "entries": [
+    { "ledger": "Freight Inward", "amount": "450.00", "side": "debit"  },
+    { "ledger": "Bank Account",   "amount": "450.00", "side": "credit" }
+  ]
+}
+```
+
+Dry run first — this only reads:
 
 ```bash
 tally-aiagent prepare examples/purchase.json
 ```
 
-```
-party    'Acme Supplies Pvt Ltd' -> 'Acme Supplies Pvt Ltd'  [exact]
-ledger   'Purchase Accounts' -> 'Purchase Accounts'  [exact]
-item     'Widget A' -> 'Widget A'  [exact]  10 x 125.50 = 1255.00
-charge   'Freight Inward' -> 'Freight Inward'  [exact]  450.00
-totals   goods=1255.00  charges=450.00  round_off=0.00  party=1705.00
-
-dry run — nothing was written. Add --post to write it.
-```
-
-Then write it:
-
-```bash
-tally-aiagent prepare examples/purchase.json --post
-```
-
-```
-posted and verified — PUR-001/2627  guid=8f2c1a...-0004
-```
-
-"Verified" there is doing real work: the voucher was read back out of Tally and its
-totals, line count and party name matched what was sent.
+The ledger names in the examples are placeholders. Use your own — `tally-aiagent
+masters --kind ledgers` lists them. **There are no default ledger names anywhere in
+this library**, on purpose: a plausible-looking default gets posted for months before
+anyone notices it was wrong.
 
 ---
 
-## In Python
+## From Python
 
 ```python
 from tally_aiagent import Tally, Voucher, Line, Charge, GateError
@@ -169,160 +275,99 @@ tally = Tally.from_env()
 voucher = Voucher.purchase(
     voucher_number="PUR-001/2627",
     date="20260909",
-    party="acme supplies pvt ltd",        # your spelling
+    party="acme supplies pvt ltd",          # your spelling
     item_ledger="Purchase Accounts",
     lines=[Line(item="Widget A", qty=10, rate="125.50")],
     charges=[Charge(ledger="Freight Inward", amount="450.00")],
 )
 
 try:
-    preparation = tally.prepare(voucher)   # the gate. sends nothing.
+    preparation = tally.prepare(voucher)     # the check. sends nothing.
 except GateError as exc:
-    print(exc)                             # every problem, listed at once
+    print(exc)                               # every problem, listed at once
     raise
 
-print(preparation.as_text())               # show a human before writing
-result = tally.post(preparation)           # writes, then reads back
+print(preparation.as_text())                 # show a human
+result = tally.post(preparation)             # writes, then reads back
 
 if result["differences"]:
-    alert(result["differences"])           # written, but not what we sent
+    alert(result["differences"])             # written, but not what we sent
 ```
 
-**You cannot post a voucher that was not prepared.** `post()` accepts only the object
-`prepare()` returns, so skipping the gate requires deleting code rather than forgetting
-a flag.
+`post()` accepts only what `prepare()` returns, so skipping the check means deleting
+code rather than forgetting a flag.
 
-### Buying in another currency
+A few details worth knowing:
 
-Give `unit_cost` and `currency_rate` instead of `rate`:
-
-```python
-Line(item="Widget A", qty=50, unit_cost="10.25", currency_rate="88.40")
-```
-
-The rate is rounded to two places *before* being multiplied by the quantity, which is
-what Tally itself does. Rounding at the end instead disagrees by a paisa or two per
-line, and on a long voucher the party total stops matching the supplier's invoice.
+- **Money is never a float.** Rates are rounded to two places *before* being multiplied
+  by quantity, which is what Tally does. Rounding at the end instead disagrees by a
+  paisa or two per line, and over a long invoice the total stops matching the supplier's.
+- **Units come from Tally**, not from a guess, so an item measured in `Pcs` isn't
+  written as `Nos`.
+- **Many voucher types are auto-numbered.** Tally ignores the number you send and
+  assigns its own. The library notices, reads the entry back by Tally's internal id
+  instead, and tells you the number Tally used in `result["assigned_voucher_number"]`.
+- **This library only ever creates.** It cannot alter or delete an entry, deliberately.
+  (Deleting a voucher over Tally's XML interface is unreliable in practice — it will
+  report `Voucher does not exist!` for a voucher that plainly does. Delete in Tally.)
 
 ---
 
-## MCP server (for AI agents)
+## What's verified, and what isn't
 
-```bash
-pip install "tally-aiagent[mcp]"
-```
-
-Point an MCP client at the `tally-aiagent-mcp` command over stdio. For Claude Code or
-Claude Desktop, in `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "tally": {
-      "command": "tally-aiagent-mcp",
-      "env": {
-        "TALLY_HOST": "localhost",
-        "TALLY_COMPANY": "Your Company",
-        "TALLY_AIAGENT_ALLOW_WRITES": "1"
-      }
-    }
-  }
-}
-```
-
-**Writes are off unless you turn them on.** Without `TALLY_AIAGENT_ALLOW_WRITES=1` the
-server reads and gates, and refuses to post. Leave it off until you have watched it
-prepare a few vouchers.
-
-| Tool | What it does |
-|---|---|
-| `list_masters` | The exact ledger or stock item names Tally holds |
-| `resolve_name` | Can this name be safely written? Returns Tally's spelling, or why not |
-| `stock` | Closing quantities |
-| `read_voucher` | Read a voucher back out of the books |
-| `suggest_voucher_number` | Next free number for a manually numbered voucher type |
-| `prepare_voucher` | **Step 1 of 2** — gate and price it. Writes nothing. Returns a report and an id |
-| `post_voucher` | **Step 2 of 2** — write a voucher that already passed the gate, then verify it |
-
-The write path is two calls on purpose. `post_voucher` takes only a `preparation_id` —
-it has no way to express a voucher — so an agent physically cannot write without first
-producing a report a human can read. That report is the approval gate, and it is
-legible: names on the left, Tally's names on the right, money at the bottom.
-
----
-
-## What is verified, and what is not
-
-Being honest about this matters more here than in most libraries, because the failure
-mode is silent and lands in someone's books.
+This matters more here than in most libraries, because the failure mode is silent and
+lands in someone's books. All of the below was checked against a real company with 240
+stock items and 519 ledgers.
 
 | | Status |
 |---|---|
-| The gate, name resolution, ambiguity refusal | **Verified against a live company** |
-| Read-back verification | **Verified against a real posted voucher** |
-| Money and rounding | **Verified — reproduces a real voucher to the paisa** |
-| **Purchase vouchers** | **Verified — generated XML is byte-identical to production** |
-| **Sales vouchers** | **Not yet verified** against a real Tally sales voucher |
-| **Journal vouchers** | **Not yet verified** against a real Tally journal voucher |
+| Name checking, refusals, suggestions | **Verified** against real supplier names |
+| Reading entries back | **Verified** against real posted vouchers |
+| Money and rounding | **Verified** — reproduces a real voucher to the paisa |
+| **Purchase entries** | **Verified** — generated XML is byte-identical to production |
+| **Journal entries** | **Verified** — posted to a live company, read back, correct |
+| **Sales entries** | **Verified structurally** — matches a real sales voucher field by field, but none has been posted |
 
-### How the purchase path was verified
+**How.** Six real supplier names were checked, four of which differ from Tally's own
+spelling by punctuation or case; all six resolved to Tally's spelling, and a near-miss
+Tally doesn't hold was refused with the right name suggested. A real 75-line purchase
+voucher was read back and matched an independent implementation exactly. The generated
+purchase envelope was diffed against the bytes a production system actually posts:
+**37,467 bytes, byte-for-byte identical**. A journal entry was posted live, read back,
+and deleted. A real sales voucher was rebuilt through the library and compared field by
+field — item, quantity, rate, amounts, both sign conventions, party flags — all matching.
 
-Against a live company with 240 stock items and 519 ledgers, without writing anything
-to it:
+Two things that only showed up against a live company, both now fixed and covered by
+tests:
 
-- **Name resolution** was run over six real supplier names, four of which differed from
-  Tally's own spelling by punctuation or case (`WILSONIC DEVELOPMENT CO. LTD` against
-  Tally's `WILSONIC DEVELOPMENT CO LTD`, and similar). All six resolved to Tally's
-  spelling. A near-miss that Tally does *not* hold — `Technologies` where the master
-  says `Technology` — was refused, with the correct name offered as a suggestion.
-- **Read-back** was run against a real posted 75-line purchase voucher. The parsed
-  totals matched an independent production implementation exactly.
-- **The write path** was checked by generating the envelope for that same voucher and
-  diffing it against the bytes a production system actually posts. **37,467 bytes,
-  byte-for-byte identical** — so the bytes this library would send are the bytes that
-  system already posts successfully.
+- **Journal entries need `ALLLEDGERENTRIES.LIST`** — three Ls — not the
+  `LEDGERENTRIES.LIST` an invoice uses. Send the wrong one and Tally doesn't report a
+  line error; it returns `EXCEPTIONS=1` with no message at all and creates nothing.
+- **Auto-numbered voucher types** broke reading back by number, as described above.
 
-That last check is why no test voucher had to be created in a live company to trust the
-purchase path. It is also why voucher element order here follows a proven sequence
-rather than a tidier one: Tally appears to parse these header fields by name rather than
-position, but "appears to" is not a reason to reorder working XML.
-
-Sales and journal follow Tally's documented voucher shape and are covered by tests, but
-"passes its tests" is not "matches what Tally stores". Both emit a warning when used.
-**Post one to a test company first and read the verification output** — which is exactly
-what the read-back check is for.
-
-If you verify one against a real voucher, a PR correcting or confirming the shape is the
-single most useful contribution this repo can receive.
-
----
+Sales is the one gap: the shape matches a real voucher exactly, but a shape that matches
+is not the same as an entry Tally accepted. **Post one to a test company first and read
+the verification output** — which is what the read-back check is for. If you do, a PR
+confirming or correcting it is the most useful thing this repo can receive.
 
 ## Security
 
-Tally's HTTP interface **has no TLS**. Tally does not support HTTPS on that port, so the
-username and password travel in clear text inside the request body.
+Tally's HTTP interface **has no encryption**. Tally doesn't support HTTPS on that port,
+so the username and password travel in clear text.
 
-- Keep this on a LAN, a VPN or an SSH tunnel. **Never expose Tally's port to the internet.**
-- Prepared voucher XML deliberately contains no credentials — they are added only at send
-  time — so a preparation report is safe to log, diff, or hand to an agent.
-- The MCP server refuses writes unless `TALLY_AIAGENT_ALLOW_WRITES=1`.
-- Nothing here is a substitute for Tally's own user permissions. Give the account this
-  library uses only the rights it needs.
+- Keep this on a local network, a VPN, or an SSH tunnel. **Never expose Tally's port to
+  the internet.**
+- Prepared entries contain no credentials — they're added only at the moment of sending
+  — so a report is safe to log or show an agent.
+- The MCP server refuses to write unless `TALLY_AIAGENT_ALLOW_WRITES=1`.
+- This is not a substitute for Tally's own user permissions. Give the account it uses
+  only the rights it needs.
 
-**On agents specifically:** an approval gate stops being oversight when a human is
-clicking through fifty of them a session. Keep the volume low enough that the report is
-actually read, and treat the read-back `differences` as the real safety net.
+**On agents specifically:** an approval step stops being oversight when someone is
+clicking through fifty of them an hour. Keep the volume low enough that the report gets
+read, and treat the read-back result as the real safety net.
 
----
-
-## Setting up Tally
-
-Tally must be running, with the company open, and configured to answer on its port:
-
-> **F1 → Settings → Connectivity → Client/Server configuration**
-> Set *TallyPrime acts as* to **Both**, and note the port (9000 by default).
-
-Environment variables:
+### Settings reference
 
 | Variable | Needed | Notes |
 |---|---|---|
@@ -331,42 +376,44 @@ Environment variables:
 | `TALLY_PORT` | no | Defaults to `9000`; hosted Tally is often `9008` |
 | `TALLY_USER` | no | Only if your company has user security enabled |
 | `TALLY_PASSWORD` | no | As above |
-| `TALLY_AIAGENT_ALLOW_WRITES` | no | MCP server only. `1` to permit writes |
+| `TALLY_AIAGENT_ALLOW_WRITES` | no | MCP server only. `1` to permit writing |
 
 ---
 
 ## Why this exists
 
 It came out of a working system, not a whiteboard. A hardware distributor's internal
-tool needed to post import purchase vouchers into Tally, and the first attempt did what
-every guide shows: build the XML, send the names from the database, check `CREATED=1`.
+tool needed to post supplier bills into Tally, and the first attempt did what every
+guide shows: build the XML, send the names from the database, check that Tally said
+`CREATED=1`.
 
 All three supplier names in that database differed from Tally's by punctuation. Posting
-would have created three duplicate supplier ledgers, silently, and the books would have
+would have created three duplicate supplier accounts, silently, and the books would have
 looked fine.
 
-The fix was the rule at the top of this file: reads may come from your tool, writes must
-be Tally-sourced. This library is that rule, extracted.
+The fix is the rule at the top of this file: reads may come from your tool, writes must
+come from Tally. This library is that rule, extracted.
 
-The wider point generalises past Tally. The current conversation about agent safety is
-mostly about *permissions* — what an agent is allowed to touch — and *data* — what it
-might leak. Neither catches this. The write here is authorised, permitted, in scope, and
-fully audited. It is simply **wrong**, in a way no approval prompt would reveal, because
-the voucher looks perfectly correct on screen. Correctness needs its own guardrails, and
+The wider point isn't really about Tally. Most of the current conversation about agent
+safety is about *permissions* — what an agent is allowed to touch — and *data* — what it
+might leak. Neither catches this. The write here is authorised, permitted, in scope and
+fully audited. It's simply **wrong**, in a way no approval prompt would reveal, because
+the entry looks perfectly correct on screen. Correctness needs its own guardrails, and
 they have to be built from knowing how the specific system fails.
-
----
 
 ## Contributing
 
-Useful, in rough order:
+Useful, roughly in order:
 
-1. Verify a sales or journal voucher against a real Tally and report what differs.
-2. Voucher types this does not cover yet — receipt, payment, contra, debit/credit note.
-3. Failure modes you have hit that the gate does not catch.
+1. Post a sales entry against a real Tally and report what differs.
+2. Voucher types this doesn't cover yet — receipt, payment, contra, debit/credit note.
+3. Failure modes you've hit that the checks don't catch.
 
-Run the tests with `pip install -e ".[dev]" && pytest`. They use a fake Tally, so no
-Tally installation is needed to work on this.
+```bash
+pip install -e ".[dev]" && pytest
+```
+
+The tests run against a fake Tally, so you don't need Tally installed to work on this.
 
 ## License
 

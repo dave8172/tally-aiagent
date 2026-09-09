@@ -238,6 +238,14 @@ def post(tally, preparation, verify: str = "warn") -> dict:
 
     try:
         actual = read_voucher(tally, voucher.voucher_number, voucher.voucher_type, voucher.date)
+        if actual is None and result.get("lastmid"):
+            # The voucher type is auto-numbered: Tally ignored the number we sent
+            # and used its own. Find it by the id Tally reported instead.
+            actual = read_voucher_by_master_id(
+                tally, result["lastmid"], voucher.voucher_type, voucher.date
+            )
+            if actual is not None:
+                result["assigned_voucher_number"] = actual["voucher_number"]
     except Unreachable as exc:
         result["differences"] = [f"Could not read the voucher back: {exc}"]
         return result
@@ -263,7 +271,7 @@ def _parse_import_result(raw: str) -> dict:
     result = {
         key.lower(): int(value)
         for key, value in re.findall(
-            r"<(CREATED|ALTERED|DELETED|IGNORED|ERRORS|EXCEPTIONS|CANCELLED|LASTVCHID)>"
+            r"<(CREATED|ALTERED|DELETED|IGNORED|ERRORS|EXCEPTIONS|CANCELLED|LASTVCHID|LASTMID)>"
             r"\s*(-?\d+)\s*</\1>",
             raw,
         )
@@ -296,6 +304,27 @@ def read_voucher(tally, voucher_number: str, voucher_type: str, on_date: str) ->
         if (tag(block, "VOUCHERNUMBER") or "") != voucher_number:
             continue
         return _parse_voucher(block, voucher_number)
+    return None
+
+
+def read_voucher_by_master_id(tally, master_id, voucher_type: str, on_date: str) -> dict | None:
+    """Read a voucher back by Tally's internal MASTERID.
+
+    Needed because many voucher types are **auto-numbered**: Tally ignores the
+    number you send and assigns its own from the type's sequence. Reading back
+    by the number you sent then finds nothing, even though the voucher posted
+    perfectly well. Tally returns the id it used as LASTMID on the import.
+    """
+    start, end = _financial_year(on_date)
+    raw = tally.export(
+        "Voucher Register",
+        f'<SVFROMDATE TYPE="Date">{start}</SVFROMDATE>'
+        f'<SVTODATE TYPE="Date">{end}</SVTODATE>'
+        f"<VOUCHERTYPENAME>{voucher_type}</VOUCHERTYPENAME>",
+    )
+    for block in blocks(raw, "VOUCHER"):
+        if (tag(block, "MASTERID") or "") == str(master_id):
+            return _parse_voucher(block, tag(block, "VOUCHERNUMBER") or "")
     return None
 
 
@@ -340,7 +369,12 @@ def _parse_voucher(block: str, voucher_number: str) -> dict:
 
 
 def compare(voucher, actual: dict | None) -> list[str]:
-    """Intended vs stored. An empty list means they agree."""
+    """Intended vs stored. An empty list means they agree.
+
+    The voucher NUMBER is deliberately not compared: on an auto-numbered type
+    Tally assigns its own, and that is correct behaviour rather than drift.
+    Everything that carries money or identity is compared.
+    """
     if actual is None:
         return ["Voucher was not found in Tally when reading it back."]
     differences = []

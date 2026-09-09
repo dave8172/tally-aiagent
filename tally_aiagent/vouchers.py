@@ -362,16 +362,27 @@ class Voucher:
         return parts
 
     def _journal_entries(self) -> list[str]:
+        """Journal entries use ALLLEDGERENTRIES.LIST — three Ls.
+
+        This is not interchangeable with the LEDGERENTRIES.LIST an invoice uses.
+        Send a journal with the two-L tag and Tally does not report a line error:
+        it returns EXCEPTIONS=1 with no message and creates nothing. Verified
+        against a real journal voucher in a live company.
+        """
         parts = []
         for entry in self.entries:
             amount = money(entry.amount)
-            signed = -amount if entry.side == "debit" else amount
+            debit = entry.side == "debit"
+            signed = -amount if debit else amount
             parts.append(
-                "<LEDGERENTRIES.LIST>"
+                "<ALLLEDGERENTRIES.LIST>"
                 f"<LEDGERNAME>{esc(entry.tally_ledger)}</LEDGERNAME>"
-                f"<ISDEEMEDPOSITIVE>{'Yes' if entry.side == 'debit' else 'No'}</ISDEEMEDPOSITIVE>"
+                f"<ISDEEMEDPOSITIVE>{'Yes' if debit else 'No'}</ISDEEMEDPOSITIVE>"
+                f"<ISLASTDEEMEDPOSITIVE>{'Yes' if debit else 'No'}</ISLASTDEEMEDPOSITIVE>"
                 "<ISPARTYLEDGER>No</ISPARTYLEDGER>"
+                "<LEDGERFROMITEM>No</LEDGERFROMITEM>"
+                "<REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>"
                 f"<AMOUNT>{signed}</AMOUNT>"
-                "</LEDGERENTRIES.LIST>"
+                "</ALLLEDGERENTRIES.LIST>"
             )
         return parts

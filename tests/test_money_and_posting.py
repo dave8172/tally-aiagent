@@ -229,3 +229,43 @@ def test_financial_year_straddles_april(tally):
     tally.voucher_register_xml = "<ENVELOPE></ENVELOPE>"
     suggested, _ = tally.next_voucher_number("PUR", "Purchase", "20260215")
     assert suggested == "PUR-001/2526"      # Feb 2026 is FY 2025-26
+
+
+def test_journal_uses_the_three_L_tag(tally):
+    """ALLLEDGERENTRIES.LIST, not LEDGERENTRIES.LIST. Tally rejects the wrong one
+    with EXCEPTIONS=1 and no message at all — verified against a live company."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        voucher = Voucher.journal(
+            voucher_number="JV-002", date="20260909",
+            entries=[Entry(ledger="Freight Inward", amount="500", side="debit"),
+                     Entry(ledger="Bank Account", amount="500", side="credit")],
+        )
+    xml = tally.prepare(voucher).xml
+    assert "<ALLLEDGERENTRIES.LIST>" in xml
+    assert "<LEDGERENTRIES.LIST>" not in xml.replace("<ALLLEDGERENTRIES.LIST>", "")
+
+
+def test_autonumbered_type_is_read_back_by_master_id(tally):
+    """Tally ignores the number you send on an auto-numbered type and assigns
+    its own. Reading back by the sent number finds nothing; the fallback finds
+    it by the id Tally reports, so a good post is not reported as a failure."""
+    tally.import_response = (
+        "<ENVELOPE><CREATED>1</CREATED><ERRORS>0</ERRORS><EXCEPTIONS>0</EXCEPTIONS>"
+        "<LASTMID>634</LASTMID></ENVELOPE>"
+    )
+    tally.voucher_register_xml = (
+        "<ENVELOPE><VOUCHER><VOUCHERNUMBER>14</VOUCHERNUMBER><MASTERID>634</MASTERID>"
+        "<GUID>v-auto</GUID><DATE>20260909</DATE>"
+        "<PARTYLEDGERNAME>Acme Supplies Pvt Ltd</PARTYLEDGERNAME>"
+        "<ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>Widget A</STOCKITEMNAME>"
+        "<AMOUNT>-1255.00</AMOUNT><ACTUALQTY> 10 Nos</ACTUALQTY><RATE>125.50/Nos</RATE>"
+        "</ALLINVENTORYENTRIES.LIST>"
+        "<LEDGERENTRIES.LIST><LEDGERNAME>Acme Supplies Pvt Ltd</LEDGERNAME>"
+        "<ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>1255.00</AMOUNT></LEDGERENTRIES.LIST>"
+        "</VOUCHER></ENVELOPE>"
+    )
+    result = tally.post(tally.prepare(purchase(voucher_number="WHATEVER-WE-SENT")))
+    assert result["posted"] is True
+    assert result["differences"] == []
+    assert result["assigned_voucher_number"] == "14"
