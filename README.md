@@ -409,7 +409,7 @@ stock items and 519 ledgers.
 | Reading entries back | **Verified** against real posted vouchers |
 | Money and rounding | **Verified** — reproduces a real voucher to the paisa |
 | **Purchase entries** | **Verified** — generated XML is byte-identical to production |
-| **Journal entries** | **Verified** — posted to a live company, read back, correct |
+| **Journal entries** | **Posted once** to a live company and read back correct; the builder still warns on use until more are checked |
 | **Sales entries** | **Verified structurally** — matches a real sales voucher field by field, but none has been posted |
 
 **How.** Six real supplier names were checked, four of which differ from Tally's own
@@ -417,8 +417,9 @@ spelling by punctuation or case; all six resolved to Tally's spelling, and a nea
 Tally doesn't hold was refused with the right name suggested. A real 75-line purchase
 voucher was read back and matched an independent implementation exactly. The generated
 purchase envelope was diffed against the bytes a production system actually posts:
-**37,467 bytes, byte-for-byte identical**. A journal entry was posted live, read back,
-and deleted. A real sales voucher was rebuilt through the library and compared field by
+**37,467 bytes, byte-for-byte identical**. A journal entry was posted live and read back
+correct. Deleting the test entries over the XML interface failed (see below), so they
+had to be removed by hand in Tally. A real sales voucher was rebuilt through the library and compared field by
 field — item, quantity, rate, amounts, both sign conventions, party flags — all matching.
 
 Two things that only showed up against a live company, both now fixed and covered by
